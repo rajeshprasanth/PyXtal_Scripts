@@ -5,7 +5,7 @@ import ase.io as io
 from ase.spacegroup import get_spacegroup
 import sys
 import datetime
-
+import shutil
 
 def read_composition(directory):
 	files=[]
@@ -19,6 +19,8 @@ def read_composition(directory):
 	more_element_cnt = 0
 	total_comp = 0
 	#
+	if not os.path.exists("summary_dir"):
+		os.mkdir("summary_dir")
 	f0 = open("summary.dat", "w")
 	f1 = open("elemental.dat", "w")
 	f2 = open("binary.dat", "w")
@@ -87,7 +89,11 @@ def read_composition(directory):
 	print(" >>> --------------------------------------------------")
 	print(" >>> Program ended at              :",datetime.datetime.now().strftime("%x %X"))
 	print(" >>> ==================================================")
-
+	shutil.move("summary.dat", "summary_dir/summary.dat")
+	shutil.move("elemental.dat", "summary_dir/elemental.dat")
+	shutil.move("binary.dat", "summary_dir/binary.dat")
+	shutil.move("ternary.dat", "summary_dir/ternary.dat")
+	shutil.move("others.dat", "summary_dir/others.dat")
 if len(sys.argv) != 2:
 	print("Usage: Summary.py [output_directory]")
 	exit()
