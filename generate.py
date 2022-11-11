@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #
 import os
+import sys
 import itertools
 from pyxtal.crystal import random_crystal
 from pyxtal.symmetry import get_symbol_and_number
@@ -9,8 +10,49 @@ from time import time
 import numpy as np
 from datetime import timedelta
 from pyxtal import pyxtal
+import configparser
 
 
+
+class inputdata:
+	def __init__(self):
+		self.verbosity = None
+		self.outdir = None
+		self.prefix = None
+		#
+		self.dimension = 3
+		self.calculation = None
+		self.atomic_elements = None
+		#
+		self.min_atom = None
+		self.max_atom = None
+		#
+		self.composition = None
+		#
+		self.sg_start = None
+		self.sg_end = None
+		
+	def read_input_file(self,inputfilename):
+		config = configparser.ConfigParser()
+		config.read(inputfilename)
+		#
+		self.verbosity = str(config.get("control", "verbosity"))
+		self.outdir = str(config.get("control", "outdir"))
+		self.prefix = str(config.get("control", "prefix"))
+		#
+		self.dimension = int(config.get("system", "dimension"))
+		self.calculation = str(config.get("system", "calculation"))
+		self.atomic_elements = config.get("system", "atomic_elements").split(",")
+		#
+		self.min_atom = int(config.get("varcomp", "min_atom"))
+		self.max_atom = int(config.get("varcomp", "max_atom"))
+		#
+		composition_str = config.get("fixedcomp", "composition").split(",")
+		self.composition = list(map(int, composition_str))
+		#		
+		if self.dimension == 3:
+			self.sg_start = 2
+			self.sg_end = 230
 
 def generate_ions_list(min_atom_in,max_atom_in,atomic_elements_in):
 	ions_list = []
@@ -70,7 +112,7 @@ def generate_crystal(dimension_in,sg_in,elementlist_in,ionslist_in):
 		isvalid = 0
 	return(isvalid,rand_crystal,start_time,end_time)
 
-def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimension_in,outdir_in,prefix_in):
+def main_function(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimension_in,outdir_in,prefix_in,verbosity_in,calculation_in,composition_in):
 	start_time = time()
 	#
 	# Initialize lists
@@ -90,10 +132,14 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 	#
 	# convert list of elements and corresponding number of ions to pyxtal format
 	#
-	for i in ions:
-		a,b = dict2list(i)
-		elementlist.append(a)
-		ionslist.append(b)
+	if calculation_in == 'varcomp':
+		for i in ions:
+			a,b = dict2list(i)
+			elementlist.append(a)
+			ionslist.append(b)
+	elif calculation_in == 'fixedcomp':
+		elementlist.append(atomic_elements_in)
+		ionslist.append(composition_in)
 	#
 	# Generate random cell for given inputs
 	#
@@ -106,11 +152,12 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 			#
 			# Verbose output
 			# 
-			if verbosity == "high":
+			if verbosity_in == "high":
 				#
 				print(" ==================================================")
-				print(" Structure # ",genstruct+1,"/",len(elementlist)*len(range(sg_start,sg_end)))
+				print(" Structure # ",genstruct+1,"/",len(elementlist)*len(range(sg_start_in,sg_end_in)))
 				print(" ==================================================")
+				print(" Running mode            : ",calculation_in)
 				print(" Requested Composition   : ",elementlist[i],"->",ionslist[i])
 				#
 				# use Spglib to find the corresponding spacegroup number
@@ -118,9 +165,9 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 				req_symbol, temp = get_symbol_and_number(sg, dimension_in)
 				print(" Requested Spacegroup #  : ",sg,"(",req_symbol,")")
 				
-				#ans = get_symmetry_dataset(crystal, symprec=1e-1)["international"]
-				#req_symbol, temp = get_symbol_and_number(ans, dimension_in)
-				#print(" Generated Spacegroup #  : ",ans,"(",req_symbol,")")
+				ans = get_symmetry_dataset(crystal.spg_struct, symprec=1e-1)["international"]
+				req_symbol, temp = get_symbol_and_number(ans, dimension_in)
+				print(" Generated Spacegroup #  : ",ans,"(",req_symbol,")")
 				#print(dir(crystal))
 				#
 				# Check validity and print status and write output to file
@@ -142,7 +189,7 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 					# 
 					crystal.to_ase().write(filename, format='vasp', vasp5=True,direct=True)
 					
-					print(" Output file             : {:s}/{:s}.{:s}.vasp".format(outdir,prefix,str(genstruct+1)))
+					print(" Output file             : {:s}/{:s}.{:s}.vasp".format(outdir_in,prefix_in,str(genstruct+1)))
 					success_cnt += 1
 				else:
 					print(" Generation Status       :  [FAILED]",)
@@ -162,10 +209,10 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 				genstruct += 1
 			else:	
 				if valid == 1:
-					if not os.path.exists(outdir):
-						os.mkdir(outdir)
+					if not os.path.exists(outdir_in):
+						os.mkdir(outdir_in)
 					#
-					filename = str(outdir) +'/'+ prefix +str(genstruct+1) +'.vasp'
+					filename = str(outdir_in) +'/'+ prefix_in +str(genstruct+1) +'.vasp'
 					#
 					# Convert crystal to vasp output and write to file
 					# 
@@ -193,27 +240,24 @@ def main(min_atom_in,max_atom_in,atomic_elements_in,sg_start_in,sg_end_in,dimens
 	print(" >>> Total time Elapsed       : {:2d}h : {:2d}m : {:.2f}s".format(int(td_str[0]),int(td_str[1]),float(td_str[2])))
 	print(" >>> ==================================================")
 
-#main(min_atom,max_atom,atomic_elements,sg_start,sg_end,dimension,outdir,prefix)
-#
-# 
-#
-#------------------#
-# Input Parameters #
-#------------------#
-min_atom = 1
-max_atom = 12
-atomic_elements = ['Mg','Si','Ge','Sn']
-#atomic_elements = ['Mg']
-dimension = 3
-verbosity = 'high'
-outdir = './output/'
-prefix = 'cfg'
-fixed_composition = False
-composition = []
+def main():
+	if len(sys.argv) != 2:
+		print("Usage: generate.py [input_file]")
+		exit()
 
-if dimension == 3:
-	sg_start = 2
-	sg_end = 230
+	data = inputdata()
+	data.read_input_file(sys.argv[1])
+	main_function(min_atom_in = data.min_atom,
+		max_atom_in = data.max_atom,
+		atomic_elements_in = data.atomic_elements,
+		sg_start_in = data.sg_start,
+		sg_end_in = data.sg_end ,
+		dimension_in = data.dimension,
+		outdir_in = data.outdir,
+		prefix_in = data.prefix,
+		verbosity_in = data.verbosity,
+		calculation_in = data.calculation,
+		composition_in = data.composition)
 
-main(min_atom,max_atom,atomic_elements,sg_start,sg_end,dimension,outdir,prefix)
-
+if __name__ == "__main__":
+	main()

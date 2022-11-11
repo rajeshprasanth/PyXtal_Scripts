@@ -1,0 +1,16 @@
+[control]
+verbosity = high
+outdir = ./3_1/
+prefix = cfg
+
+[system]
+dimension = 3
+calculation = fixedcomp
+atomic_elements = Mg,Si,Ge
+
+[varcomp]
+min_atom = 3
+max_atom = 12
+
+[fixedcomp]
+composition = 8,3,1
